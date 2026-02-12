@@ -1,0 +1,43 @@
+{
+  "name": "@evgtools/better-grammy-menu",
+  "version": "0.1.0",
+  "description": "Tree-shakable TypeScript menu builder for Grammy",
+  "keywords": [
+    "grammy",
+    "menu",
+    "telegram",
+    "typescript"
+  ],
+  "license": "MIT",
+  "homepage": "https://github.com/evgtools/better-grammy-menu",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/evgtools/better-grammy-menu.git"
+  },
+  "type": "module",
+  "files": [
+    "dist"
+  ],
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "sideEffects": false,
+  "scripts": {
+    "build:js": "bun build --sourcemap=inline --target=node --external=grammy --external=nanoid --minify --outdir ./dist ./src/index.ts",
+    "build:types": "bunx tsc --emitDeclarationOnly --outDir dist",
+    "build": "bun run build:js && bun run build:types",
+    "prepublishOnly": "bun run build"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "peerDependencies": {
+    "grammy": "^1.0.0"
+  },
+  "devDependencies": {
+    "grammy": "^1.39.3",
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "nanoid": "^5.1.6"
+  }
+}
