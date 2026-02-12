@@ -135,7 +135,7 @@ const parseAction = (
   };
 };
 
-class LayoutBuilder<
+export class LayoutBuilder<
   C extends MenuContext,
   S extends Record<string, any> | void,
   L,
