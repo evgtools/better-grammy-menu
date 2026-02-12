@@ -1,6 +1,6 @@
 {
   "name": "@evgtools/better-grammy-menu",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Tree-shakable TypeScript menu builder for Grammy",
   "keywords": [
     "grammy",
