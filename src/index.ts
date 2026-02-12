@@ -149,7 +149,7 @@ export class LayoutBuilder<
     this.steps = [];
   }
 
-  callback(text: string, callbackFn: MenuCallbackFn<C, S, L, D>) {
+  callback(text: string, callbackFn?: MenuCallbackFn<C, S, L, D>) {
     const targetId = nanoid(6);
     const action = buildAction("callback", this.menuId, targetId);
 
@@ -411,7 +411,7 @@ export class Menu<
     }
 
     try {
-      if (action === "callback") {
+      if (action === "callback" && actionHandler.callbackFn) {
         (ctx as any).menu = await this.getCallbackActions(ctx);
         const state = await this.getState(ctx);
         if (state) (ctx as any).menu.state = state;
