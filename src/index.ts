@@ -20,11 +20,9 @@ type State<S extends Record<string, any>> = {
 };
 type MenuNavigationArgs<L> = [L] extends [void]
   ? [args?: L]
-  : undefined extends L
+  : [undefined] extends [L]
     ? [args?: L]
-    : {} extends L
-      ? [args?: L]
-      : [args: L];
+    : [args: L];
 type MenuCallbackActions<L> = {
   refresh: (args?: Partial<L>) => Promise<void>;
   navigate: <L2>(
@@ -304,6 +302,12 @@ export class Menu<
     this.options = options;
   }
 
+  private initContext(ctx: C) {
+    (ctx as any).menu ??= {};
+    ctx.session._menu ??= {};
+    ctx.session._menu[this.id] ??= {};
+  }
+
   private async getCallbackActions(ctx: C) {
     const actions: MenuCallbackActions<L> = {
       navigate: (
@@ -323,7 +327,36 @@ export class Menu<
     return actions;
   }
 
+  private async getState(ctx: C) {
+    if (!ctx.session._menu[this.id].state && !this.initStateFn) {
+      return;
+    }
+
+    if (!ctx.session._menu[this.id].state && this.initStateFn) {
+      ctx.session._menu[this.id].state = await Promise.resolve(
+        this.initStateFn?.(),
+      );
+    }
+
+    const state: State<any> = {
+      get: (key) => ctx.session._menu[this.id].state[key],
+      set: (key, value) => {
+        if (typeof value === "function") {
+          ctx.session._menu[this.id].state[key] = value(
+            ctx.session._menu[this.id].state[key],
+          );
+        } else {
+          ctx.session._menu[this.id].state[key] = value;
+        }
+      },
+      reset: () => delete ctx.session._menu[this.id].state,
+    };
+
+    return state;
+  }
+
   private async buildLayout(ctx: C, args: L) {
+    this.initContext(ctx);
     const state = await this.getState(ctx);
     if (state) (ctx as any).menu.state = state;
 
@@ -362,39 +395,7 @@ export class Menu<
     return { text, keyboard, parseMode };
   }
 
-  private async getState(ctx: C) {
-    if (!ctx.session._menu[this.id].state && !this.initStateFn) {
-      return;
-    }
-
-    if (!ctx.session._menu[this.id].state && this.initStateFn) {
-      ctx.session._menu[this.id].state = await Promise.resolve(
-        this.initStateFn?.(),
-      );
-    }
-
-    const state: State<any> = {
-      get: (key) => ctx.session._menu[this.id].state[key],
-      set: (key, value) => {
-        if (typeof value === "function") {
-          ctx.session._menu[this.id].state[key] = value(
-            ctx.session._menu[this.id].state[key],
-          );
-        } else {
-          ctx.session._menu[this.id].state[key] = value;
-        }
-      },
-      reset: () => delete ctx.session._menu[this.id].state,
-    };
-
-    return state;
-  }
-
   middleware: MiddlewareFn<C> = async (ctx, next) => {
-    (ctx as any).menu ??= {};
-    ctx.session._menu ??= {};
-    ctx.session._menu[this.id] ??= {};
-
     const callbackQuery = ctx.callbackQuery?.data ?? "";
     const actionHandler =
       this.staticActionHandlersByAction.get(callbackQuery) ??
@@ -552,11 +553,6 @@ export const createMenuFactory = <ContextType extends MenuContext>(
       : () => MaybePromise<NonNullable<StateType>>;
     options?: MenuOptions;
   }): Menu<ContextType, StateType, LoaderArgumentsType, LoaderDataType> => {
-    const mergedOptions: MenuOptions | undefined =
-      defaultOptions || data.options
-        ? { ...(defaultOptions ?? {}), ...(data.options ?? {}) }
-        : undefined;
-
     return createMenu<
       ContextType,
       StateType,
@@ -564,7 +560,10 @@ export const createMenuFactory = <ContextType extends MenuContext>(
       LoaderDataType
     >({
       ...data,
-      options: mergedOptions,
+      options: {
+        ...(defaultOptions ?? {}),
+        ...(data.options ?? {}),
+      },
     });
   };
 };
