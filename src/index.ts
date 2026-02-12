@@ -7,8 +7,8 @@ import {
 import type { InlineKeyboardButton, ParseMode } from "grammy/types";
 import { nanoid } from "nanoid";
 
+type MenuContext = SessionFlavor<any> & Context;
 type MaybePromise<T> = Promise<T> | T;
-export type MenuContext = SessionFlavor<any> & Context;
 type InitStateFn<S> = () => MaybePromise<S>;
 type State<S extends Record<string, any>> = {
   get: <K extends keyof S>(key: K) => S[K];
@@ -18,28 +18,34 @@ type State<S extends Record<string, any>> = {
   ) => void;
   reset: () => void;
 };
-export type LoaderFn<
+type LoaderFn<
   C extends MenuContext,
   S extends Record<string, any> | void,
   L,
   D,
 > = (
-  ctx: C,
+  ctx: C & (S extends void ? {} : { menu: { state: State<NonNullable<S>> } }),
   args: L,
-  state: S extends void ? void : State<NonNullable<S>>,
 ) => MaybePromise<
   { text: string; parseMode?: ParseMode } & (D extends void
     ? { data?: never }
     : { data: D })
 >;
+type MenuNavigationArgs<L> = [L] extends [void]
+  ? [args?: L]
+  : undefined extends L
+    ? [args?: L]
+    : {} extends L
+      ? [args?: L]
+      : [args: L];
 type MenuCallbackActions<L> = {
   refresh: (args?: Partial<L>) => Promise<void>;
   navigate: <L2>(
     menu: Menu<any, any, L2, any>,
-    ...args: L2 extends void ? [args?: L2] : [args: L2]
+    ...args: MenuNavigationArgs<L2>
   ) => Promise<void>;
 };
-export type MenuCallbackFn<
+type MenuCallbackFn<
   C extends MenuContext,
   S extends Record<string, any> | void,
   L,
@@ -51,7 +57,7 @@ export type MenuCallbackFn<
   },
   data: D,
 ) => MaybePromise<void>;
-export type MenuDynamicFn<
+type MenuDynamicFn<
   C extends MenuContext,
   S extends Record<string, any> | void,
   L,
@@ -287,12 +293,10 @@ export class Menu<
 
   private async getCallbackActions(ctx: C) {
     const actions: MenuCallbackActions<L> = {
-      navigate: async <S2 extends Record<string, any> | void, L2>(
-        menu: Menu<any, S2, L2, any>,
-        ...args: L2 extends void ? [args?: L2] : [args: L2]
-      ) => {
-        await menu.render(ctx, args[0] as L2);
-      },
+      navigate: (
+        menu: Menu<any, any, any, any>,
+        ...args: MenuNavigationArgs<any>
+      ) => menu.render(ctx, args[0] as any),
       refresh: (args) => {
         const sessionArgs = ctx.session._menu.activeMenuLoaderArgs;
         return this.render(
@@ -308,8 +312,10 @@ export class Menu<
 
   private async buildLayout(ctx: C, args: L) {
     const state = await this.getState(ctx);
+    if (state) (ctx as any).menu.state = state;
+
     const { text, data, parseMode } = await Promise.race([
-      Promise.resolve(this.loaderFn(ctx, args, state as any)),
+      Promise.resolve(this.loaderFn(ctx as any, args)),
       new Promise<never>((_, reject) =>
         setTimeout(
           () =>
@@ -372,6 +378,7 @@ export class Menu<
   }
 
   middleware: MiddlewareFn<C> = async (ctx, next) => {
+    (ctx as any).menu ??= {};
     ctx.session._menu ??= {};
     ctx.session._menu[this.id] ??= {};
 
@@ -406,7 +413,8 @@ export class Menu<
     try {
       if (action === "callback") {
         (ctx as any).menu = await this.getCallbackActions(ctx);
-        (ctx as any).menu.state = await this.getState(ctx);
+        const state = await this.getState(ctx);
+        if (state) (ctx as any).menu.state = state;
 
         await Promise.race([
           Promise.resolve(
@@ -449,7 +457,7 @@ export class Menu<
     });
   }
 
-  async send(ctx: C, ...args: L extends void ? [args?: L] : [args: L]) {
+  async send(ctx: C, ...args: MenuNavigationArgs<L>) {
     try {
       const { keyboard, text, parseMode } = await this.buildLayout(
         ctx,
