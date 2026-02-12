@@ -7,7 +7,7 @@ import {
 import type { InlineKeyboardButton, ParseMode } from "grammy/types";
 import { nanoid } from "nanoid";
 
-type MenuContext = SessionFlavor<any> & Context;
+export type MenuContext<C extends Context = Context> = SessionFlavor<any> & C;
 type MaybePromise<T> = Promise<T> | T;
 type InitStateFn<S> = () => MaybePromise<S>;
 type State<S extends Record<string, any>> = {
@@ -18,19 +18,6 @@ type State<S extends Record<string, any>> = {
   ) => void;
   reset: () => void;
 };
-type LoaderFn<
-  C extends MenuContext,
-  S extends Record<string, any> | void,
-  L,
-  D,
-> = (
-  ctx: C & (S extends void ? {} : { menu: { state: State<NonNullable<S>> } }),
-  args: L,
-) => MaybePromise<
-  { text: string; parseMode?: ParseMode } & (D extends void
-    ? { data?: never }
-    : { data: D })
->;
 type MenuNavigationArgs<L> = [L] extends [void]
   ? [args?: L]
   : undefined extends L
@@ -45,25 +32,42 @@ type MenuCallbackActions<L> = {
     ...args: MenuNavigationArgs<L2>
   ) => Promise<void>;
 };
-type MenuCallbackFn<
+export type WithActions<C extends MenuContext = MenuContext, L = any> = C & {
+  menu: MenuCallbackActions<L>;
+};
+export type WithState<C extends MenuContext = MenuContext, S = void> = C &
+  (S extends void ? {} : { menu: { state: State<NonNullable<S>> } });
+type LoaderFn<
   C extends MenuContext,
   S extends Record<string, any> | void,
   L,
   D,
 > = (
-  ctx: C & {
-    menu: MenuCallbackActions<L> &
-      (S extends void ? {} : { state: State<NonNullable<S>> });
-  },
-  data: D,
-) => MaybePromise<void>;
+  ctx: WithState<C, S>,
+  args: L,
+) => MaybePromise<
+  { text: string; parseMode?: ParseMode } & (D extends void
+    ? { data?: never }
+    : { data: D })
+>;
+export type MenuCallbackContext<
+  C extends MenuContext = MenuContext,
+  S extends Record<string, any> | void = void,
+  L = void,
+> = WithActions<C, L> & WithState<C, S>;
+type MenuCallbackFn<
+  C extends MenuContext,
+  S extends Record<string, any> | void,
+  L,
+  D,
+> = (ctx: MenuCallbackContext<C, S, L>, data: D) => MaybePromise<void>;
 type MenuDynamicFn<
   C extends MenuContext,
   S extends Record<string, any> | void,
   L,
   D,
 > = (
-  ctx: C,
+  ctx: WithState<C, S>,
   builder: Omit<LayoutBuilder<C, S, L, D>, "prepare" | "build">,
   data: D,
 ) => MaybePromise<void>;
@@ -95,6 +99,15 @@ export type MenuOptions = {
   timeoutErrorText?: string;
   timeoutMs?: number;
 };
+export type KeyboardBuilder<
+  C extends MenuContext = MenuContext,
+  S extends Record<string, any> | void = void,
+  L = void,
+  D = void,
+> = Pick<
+  LayoutBuilder<C, S, L, D>,
+  "callback" | "copy" | "url" | "row" | "dynamic"
+>;
 
 const MENU_PREFIX = "eijdfwof";
 const ACTION_REPRESENTATION_MAPPING = {
@@ -193,7 +206,7 @@ export class LayoutBuilder<
     };
   }
 
-  async build(ctx: C, data: D) {
+  async build(ctx: WithState<C, S>, data: D) {
     const keyboard: InlineKeyboardButton[][] = [[]];
     const staticHandlers: ActionHandler[] = [];
     const dynamicHandlers: ActionHandler[] = [];
@@ -330,7 +343,7 @@ export class Menu<
       ),
     ]);
     const { keyboard, dynamicHandlers } = await this.builder.build(
-      ctx,
+      ctx as any,
       data as D,
     );
     const dynamicActionHandlerMap = new Map();
@@ -473,57 +486,85 @@ export class Menu<
     }
   }
 }
-
-export function createMenu<
-  C extends MenuContext = MenuContext,
-  L = void,
-  D = void,
->(_: {
-  loader: LoaderFn<C, void, L, D>;
+export const createMenu = <
+  ContextType extends MenuContext = MenuContext,
+  StateType extends Record<string, any> | void = void,
+  LoaderArgumentsType = void,
+  LoaderDataType = void,
+>(data: {
+  loader: LoaderFn<ContextType, StateType, LoaderArgumentsType, LoaderDataType>;
   layout: (
-    builder: Omit<LayoutBuilder<C, void, L, D>, "build" | "prepare">,
+    builder: KeyboardBuilder<
+      ContextType,
+      StateType,
+      LoaderArgumentsType,
+      LoaderDataType
+    >,
   ) => void;
+  initState?: StateType extends void
+    ? never
+    : () => MaybePromise<NonNullable<StateType>>;
   options?: MenuOptions;
-  initState?: never;
-}): Menu<C, void, L, D>;
-
-export function createMenu<
-  C extends MenuContext = MenuContext,
-  S extends Record<string, any> = Record<string, any>,
-  L = void,
-  D = void,
->(_: {
-  loader: LoaderFn<C, S, L, D>;
-  layout: (
-    builder: Omit<LayoutBuilder<C, S, L, D>, "build" | "prepare">,
-  ) => void;
-  initState: () => MaybePromise<S>;
-  options?: MenuOptions;
-}): Menu<C, S, L, D>;
-
-// impl
-export function createMenu({
-  layout,
-  loader,
-  initState,
-  options,
-}: {
-  loader: LoaderFn<any, any, any, any>;
-  layout: (
-    builder: Omit<LayoutBuilder<any, any, any, any>, "build" | "prepare">,
-  ) => void;
-  initState?: () => MaybePromise<any>;
-  options?: MenuOptions;
-}) {
+}): Menu<ContextType, StateType, LoaderArgumentsType, LoaderDataType> => {
   const id = nanoid(6);
-  const builder = new LayoutBuilder<any, any, any, any>(id);
-  layout(builder);
+  const builder = new LayoutBuilder<
+    ContextType,
+    StateType,
+    LoaderArgumentsType,
+    LoaderDataType
+  >(id);
 
-  return new Menu<any, any, any, any>({
+  data.layout(builder);
+
+  return new Menu<ContextType, StateType, LoaderArgumentsType, LoaderDataType>({
     id,
-    loader,
-    initState,
+    loader: data.loader,
+    initState: data.initState as unknown as InitStateFn<StateType> | undefined,
     builder,
-    options,
+    options: data.options,
   });
-}
+};
+
+export const createMenuFactory = <ContextType extends MenuContext>(
+  defaultOptions?: MenuOptions,
+) => {
+  return <
+    StateType extends Record<string, any> | void = void,
+    LoaderArgumentsType = void,
+    LoaderDataType = void,
+  >(data: {
+    loader: LoaderFn<
+      ContextType,
+      StateType,
+      LoaderArgumentsType,
+      LoaderDataType
+    >;
+    layout: (
+      builder: KeyboardBuilder<
+        ContextType,
+        StateType,
+        LoaderArgumentsType,
+        LoaderDataType
+      >,
+    ) => void;
+    initState?: StateType extends void
+      ? never
+      : () => MaybePromise<NonNullable<StateType>>;
+    options?: MenuOptions;
+  }): Menu<ContextType, StateType, LoaderArgumentsType, LoaderDataType> => {
+    const mergedOptions: MenuOptions | undefined =
+      defaultOptions || data.options
+        ? { ...(defaultOptions ?? {}), ...(data.options ?? {}) }
+        : undefined;
+
+    return createMenu<
+      ContextType,
+      StateType,
+      LoaderArgumentsType,
+      LoaderDataType
+    >({
+      ...data,
+      options: mergedOptions,
+    });
+  };
+};
