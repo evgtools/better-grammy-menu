@@ -346,9 +346,11 @@ export class Menu<
     const state = await this.getState(ctx);
     if (state) (ctx as any).menu.state = state;
 
-    await Promise.resolve(
-      this.onEnterFn?.(ctx as WithState<ContextType, StateType>),
-    );
+    if (ctx.session._menu.activeMenuId !== this.id) {
+      await Promise.resolve(
+        this.onEnterFn?.(ctx as WithState<ContextType, StateType>),
+      );
+    }
 
     const { text, data, parseMode } = await Promise.race([
       Promise.resolve(
@@ -382,6 +384,7 @@ export class Menu<
       dynamicActionHandlerMap,
     );
 
+    ctx.session._menu.activeMenuId = this.id;
     ctx.session._menu.activeMenuLoaderArgs = args;
     ctx.session._menu.activeMenuLoaderData = data;
 
