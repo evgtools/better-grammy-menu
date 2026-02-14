@@ -328,7 +328,11 @@ export class Menu<
           ctx.session._menu[this.id].state[key] = value;
         }
       },
-      reset: () => delete ctx.session._menu[this.id].state,
+      reset: async () => {
+        ctx.session._menu[this.id].state = await Promise.resolve(
+          this.initStateFn?.(),
+        );
+      },
     };
 
     return state;

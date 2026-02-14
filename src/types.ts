@@ -11,15 +11,15 @@ export type InitStateFn<StateType> = () => MaybePromise<StateType>;
 
 export type OnEnterFn<ContextType extends MenuContext, StateType> = (
   ctx: WithState<ContextType, StateType>,
-) => MaybePromise<void>;
+) => MaybePromise<any>;
 
 export type State<StateType> = {
   get: <K extends keyof StateType>(key: K) => StateType[K];
   set: <K extends keyof StateType>(
     key: K,
     value: StateType[K] | ((prev: StateType[K]) => StateType[K]),
-  ) => void;
-  reset: () => void;
+  ) => any;
+  reset: () => any;
 };
 
 export type MenuNavigationArgs<LoaderArgumentsType> = [
@@ -31,11 +31,11 @@ export type MenuNavigationArgs<LoaderArgumentsType> = [
     : [args: LoaderArgumentsType];
 
 export type MenuCallbackActions<LoaderArgumentsType> = {
-  refresh: (args?: Partial<LoaderArgumentsType>) => Promise<void>;
+  refresh: (args?: Partial<LoaderArgumentsType>) => Promise<any>;
   navigate: <L2>(
     menu: Menu<any, any, L2, any>,
     ...args: MenuNavigationArgs<L2>
-  ) => Promise<void>;
+  ) => Promise<any>;
 };
 
 export type WithActions<
@@ -82,7 +82,7 @@ export type MenuCallbackFn<
 > = (
   ctx: MenuCallbackContext<ContextType, StateType, LoaderArgumentsType>,
   data: LoaderDataType,
-) => MaybePromise<void>;
+) => MaybePromise<any>;
 
 export type MenuDynamicFn<
   ContextType extends MenuContext,
@@ -98,7 +98,7 @@ export type MenuDynamicFn<
     LoaderDataType
   >,
   data: LoaderDataType,
-) => MaybePromise<void>;
+) => MaybePromise<any>;
 
 export type Action = "callback";
 
