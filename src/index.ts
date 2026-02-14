@@ -6,11 +6,15 @@ import {
 } from "grammy";
 import type { InlineKeyboardButton, ParseMode } from "grammy/types";
 import { nanoid } from "nanoid";
+import { on } from "stream";
 
 export type MenuContext<C extends Context = Context> = SessionFlavor<any> & C;
 type MaybePromise<T> = Promise<T> | T;
 type InitStateFn<S> = () => MaybePromise<S>;
-type State<S extends Record<string, any>> = {
+type OnEnterFn<C extends MenuContext, S> = (
+  ctx: WithState<C, S>,
+) => MaybePromise<void>;
+type State<S> = {
   get: <K extends keyof S>(key: K) => S[K];
   set: <K extends keyof S>(
     key: K,
@@ -35,12 +39,7 @@ export type WithActions<C extends MenuContext = MenuContext, L = any> = C & {
 };
 export type WithState<C extends MenuContext = MenuContext, S = void> = C &
   (S extends void ? {} : { menu: { state: State<NonNullable<S>> } });
-type LoaderFn<
-  C extends MenuContext,
-  S extends Record<string, any> | void,
-  L,
-  D,
-> = (
+type LoaderFn<C extends MenuContext, S, L, D> = (
   ctx: WithState<C, S>,
   args: L,
 ) => MaybePromise<
@@ -50,21 +49,14 @@ type LoaderFn<
 >;
 export type MenuCallbackContext<
   C extends MenuContext = MenuContext,
-  S extends Record<string, any> | void = void,
+  S = void,
   L = void,
 > = WithActions<C, L> & WithState<C, S>;
-type MenuCallbackFn<
-  C extends MenuContext,
-  S extends Record<string, any> | void,
-  L,
-  D,
-> = (ctx: MenuCallbackContext<C, S, L>, data: D) => MaybePromise<void>;
-type MenuDynamicFn<
-  C extends MenuContext,
-  S extends Record<string, any> | void,
-  L,
-  D,
-> = (
+type MenuCallbackFn<C extends MenuContext, S, L, D> = (
+  ctx: MenuCallbackContext<C, S, L>,
+  data: D,
+) => MaybePromise<void>;
+type MenuDynamicFn<C extends MenuContext, S, L, D> = (
   ctx: WithState<C, S>,
   builder: Omit<LayoutBuilder<C, S, L, D>, "prepare" | "build">,
   data: D,
@@ -74,12 +66,7 @@ type ActionHandler = {
   action: string;
   callbackFn?: MenuCallbackFn<any, any, any, any>;
 };
-type BuildStep<
-  C extends MenuContext,
-  S extends Record<string, any> | void,
-  L,
-  D,
-> =
+type BuildStep<C extends MenuContext, S, L, D> =
   | {
       scope: "dynamic";
       dynamicFn: MenuDynamicFn<C, S, L, D>;
@@ -99,7 +86,7 @@ export type MenuOptions = {
 };
 export type KeyboardBuilder<
   C extends MenuContext = MenuContext,
-  S extends Record<string, any> | void = void,
+  S = void,
   L = void,
   D = void,
 > = Pick<
@@ -146,12 +133,7 @@ const parseAction = (
   };
 };
 
-export class LayoutBuilder<
-  C extends MenuContext,
-  S extends Record<string, any> | void,
-  L,
-  D,
-> {
+export class LayoutBuilder<C extends MenuContext, S, L, D> {
   private readonly menuId: string;
   private steps: BuildStep<C, S, L, D>[];
 
@@ -253,15 +235,11 @@ export class LayoutBuilder<
   }
 }
 
-export class Menu<
-  C extends MenuContext,
-  S extends Record<string, any> | void,
-  L,
-  D,
-> {
+export class Menu<C extends MenuContext, S, L, D> {
   readonly id: string;
   private readonly loaderFn: LoaderFn<C, S, L, D>;
   private readonly initStateFn?: InitStateFn<S>;
+  private readonly onEnterFn?: OnEnterFn<C, S>;
   private readonly staticActionHandlersByAction: Map<string, ActionHandler>;
   private readonly dynamicActionHandlersByActionByChatId: Map<
     string,
@@ -279,18 +257,20 @@ export class Menu<
     builder,
     id,
     loader,
-    initState,
+    state,
     options,
+    onEnter,
   }: {
     id: string;
     loader: LoaderFn<C, S, L, D>;
     builder: LayoutBuilder<C, S, L, D>;
-    initState?: InitStateFn<S>;
+    state?: InitStateFn<S>;
     options?: MenuOptions;
+    onEnter?: OnEnterFn<C, S>;
   }) {
     this.id = id;
     this.loaderFn = loader;
-    this.initStateFn = initState;
+    this.initStateFn = state;
     const { staticActionHandlers } = builder.prepare();
     const staticActionHandlerMap = new Map<string, ActionHandler>();
     staticActionHandlers.forEach((actionHandler) => {
@@ -299,6 +279,7 @@ export class Menu<
     this.staticActionHandlersByAction = staticActionHandlerMap;
     this.dynamicActionHandlersByActionByChatId = new Map();
     this.builder = builder;
+    this.onEnterFn = onEnter;
     this.options = options;
   }
 
@@ -357,11 +338,14 @@ export class Menu<
 
   private async buildLayout(ctx: C, args: L) {
     this.initContext(ctx);
+
     const state = await this.getState(ctx);
     if (state) (ctx as any).menu.state = state;
 
+    await Promise.resolve(this.onEnterFn?.(ctx as WithState<C, S>));
+
     const { text, data, parseMode } = await Promise.race([
-      Promise.resolve(this.loaderFn(ctx as any, args)),
+      Promise.resolve(this.loaderFn(ctx as WithState<C, S>, args)),
       new Promise<never>((_, reject) =>
         setTimeout(
           () =>
@@ -375,10 +359,12 @@ export class Menu<
         ),
       ),
     ]);
+
     const { keyboard, dynamicHandlers } = await this.builder.build(
       ctx as any,
       data as D,
     );
+
     const dynamicActionHandlerMap = new Map();
     dynamicHandlers.forEach((actionHandler) => {
       dynamicActionHandlerMap.set(actionHandler.action, actionHandler);
@@ -489,11 +475,12 @@ export class Menu<
 }
 export const createMenu = <
   ContextType extends MenuContext = MenuContext,
-  StateType extends Record<string, any> | void = void,
+  StateType = void,
   LoaderArgumentsType = void,
   LoaderDataType = void,
 >(data: {
   loader: LoaderFn<ContextType, StateType, LoaderArgumentsType, LoaderDataType>;
+  onEnter?: OnEnterFn<ContextType, StateType>;
   layout: (
     builder: KeyboardBuilder<
       ContextType,
@@ -502,7 +489,7 @@ export const createMenu = <
       LoaderDataType
     >,
   ) => void;
-  initState?: StateType extends void
+  state?: StateType extends void
     ? never
     : () => MaybePromise<NonNullable<StateType>>;
   options?: MenuOptions;
@@ -518,11 +505,9 @@ export const createMenu = <
   data.layout(builder);
 
   return new Menu<ContextType, StateType, LoaderArgumentsType, LoaderDataType>({
+    ...data,
     id,
-    loader: data.loader,
-    initState: data.initState as unknown as InitStateFn<StateType> | undefined,
     builder,
-    options: data.options,
   });
 };
 
@@ -530,7 +515,7 @@ export const createMenuFactory = <ContextType extends MenuContext>(
   defaultOptions?: MenuOptions,
 ) => {
   return <
-    StateType extends Record<string, any> | void = void,
+    StateType = void,
     LoaderArgumentsType = void,
     LoaderDataType = void,
   >(data: {
@@ -548,9 +533,10 @@ export const createMenuFactory = <ContextType extends MenuContext>(
         LoaderDataType
       >,
     ) => void;
-    initState?: StateType extends void
+    state?: StateType extends void
       ? never
       : () => MaybePromise<NonNullable<StateType>>;
+    onEnter?: OnEnterFn<ContextType, StateType>;
     options?: MenuOptions;
   }): Menu<ContextType, StateType, LoaderArgumentsType, LoaderDataType> => {
     return createMenu<
