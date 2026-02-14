@@ -294,7 +294,7 @@ export class Menu<
       navigate: (
         menu: Menu<any, any, any, any>,
         ...args: MenuNavigationArgs<any>
-      ) => menu.render(ctx, args[0] as any),
+      ) => menu.render(ctx, args[0] as any, { enter: true }),
       refresh: (args) => {
         const sessionArgs = ctx.session._menu.activeMenuLoaderArgs;
         return this.render(
@@ -340,13 +340,17 @@ export class Menu<
     return state;
   }
 
-  private async buildLayout(ctx: ContextType, args: LoaderArgumentsType) {
+  private async buildLayout(
+    ctx: ContextType,
+    args: LoaderArgumentsType,
+    options?: { enter?: boolean },
+  ) {
     this.initContext(ctx);
 
     const state = await this.getState(ctx);
     if (state) (ctx as any).menu.state = state;
 
-    if (ctx.session._menu.activeMenuId !== this.id) {
+    if (options?.enter) {
       await Promise.resolve(
         this.onEnterFn?.(ctx as WithState<ContextType, StateType>),
       );
@@ -384,7 +388,6 @@ export class Menu<
       dynamicActionHandlerMap,
     );
 
-    ctx.session._menu.activeMenuId = this.id;
     ctx.session._menu.activeMenuLoaderArgs = args;
     ctx.session._menu.activeMenuLoaderData = data;
 
@@ -459,8 +462,14 @@ export class Menu<
     }
   };
 
-  async render(ctx: ContextType, args: LoaderArgumentsType) {
-    const { text, keyboard, parseMode } = await this.buildLayout(ctx, args);
+  async render(
+    ctx: ContextType,
+    args: LoaderArgumentsType,
+    options?: { enter?: boolean },
+  ) {
+    const { text, keyboard, parseMode } = await this.buildLayout(ctx, args, {
+      enter: options?.enter,
+    });
     await ctx.editMessageText(text, {
       parse_mode: parseMode,
       reply_markup: { inline_keyboard: keyboard },
@@ -475,6 +484,7 @@ export class Menu<
       const { keyboard, text, parseMode } = await this.buildLayout(
         ctx,
         args[0] as LoaderArgumentsType,
+        { enter: true },
       );
       const { message_id } = await ctx.reply(text, {
         parse_mode: parseMode,
