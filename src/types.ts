@@ -175,10 +175,7 @@ export interface KeyboardBuilder<
     LoaderArgumentsType,
     LoaderDataType
   >;
-  row: (
-    text: string,
-    url: string | URL,
-  ) => KeyboardBuilder<
+  row: () => KeyboardBuilder<
     ContextType,
     StateType,
     LoaderArgumentsType,
