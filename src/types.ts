@@ -1,5 +1,5 @@
 import { Context, SessionFlavor } from "grammy";
-import { Menu } from "./index.js";
+import type { Menu } from "./index.js";
 import { InlineKeyboardButton, ParseMode } from "grammy/types";
 
 export type MaybePromise<T> = Promise<T> | T;

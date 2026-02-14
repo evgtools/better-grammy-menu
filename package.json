@@ -18,8 +18,12 @@
   "files": [
     "dist"
   ],
-  "main": "./dist/index.js",
-  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
   "sideEffects": false,
   "scripts": {
     "build:js": "bun build --sourcemap=inline --target=node --external=grammy --external=nanoid --minify --outdir ./dist ./src/index.ts",

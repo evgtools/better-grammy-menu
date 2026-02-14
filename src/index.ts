@@ -1,7 +1,7 @@
 import { InlineKeyboard, type MiddlewareFn } from "grammy";
 import type { InlineKeyboardButton, ParseMode } from "grammy/types";
 import { nanoid } from "nanoid";
-import {
+import type {
   Action,
   ActionHandler,
   BuildStep,
@@ -18,6 +18,8 @@ import {
   OnEnterFn,
   State,
   WithState,
+  WithActions,
+  MenuCallbackContext,
 } from "./types.js";
 
 const MENU_PREFIX = "eijdfwof";
@@ -562,3 +564,24 @@ export const createMenuFactory = <ContextType extends MenuContext>(
     });
   };
 };
+
+export type {
+  Action,
+  ActionHandler,
+  BuildStep,
+  InitStateFn,
+  KeyboardBuilder,
+  LoaderFn,
+  MaybePromise,
+  MenuCallbackActions,
+  MenuCallbackFn,
+  MenuContext,
+  MenuDynamicFn,
+  MenuNavigationArgs,
+  MenuOptions,
+  OnEnterFn,
+  State,
+  WithState,
+  WithActions,
+  MenuCallbackContext,
+} from "./types.js";
