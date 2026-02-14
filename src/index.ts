@@ -1,98 +1,24 @@
-import {
-  Context,
-  InlineKeyboard,
-  type MiddlewareFn,
-  type SessionFlavor,
-} from "grammy";
+import { InlineKeyboard, type MiddlewareFn } from "grammy";
 import type { InlineKeyboardButton, ParseMode } from "grammy/types";
 import { nanoid } from "nanoid";
-import { on } from "stream";
-
-export type MenuContext<C extends Context = Context> = SessionFlavor<any> & C;
-type MaybePromise<T> = Promise<T> | T;
-type InitStateFn<S> = () => MaybePromise<S>;
-type OnEnterFn<C extends MenuContext, S> = (
-  ctx: WithState<C, S>,
-) => MaybePromise<void>;
-type State<S> = {
-  get: <K extends keyof S>(key: K) => S[K];
-  set: <K extends keyof S>(
-    key: K,
-    value: S[K] | ((prev: S[K]) => S[K]),
-  ) => void;
-  reset: () => void;
-};
-type MenuNavigationArgs<L> = [L] extends [void]
-  ? [args?: L]
-  : [undefined] extends [L]
-    ? [args?: L]
-    : [args: L];
-type MenuCallbackActions<L> = {
-  refresh: (args?: Partial<L>) => Promise<void>;
-  navigate: <L2>(
-    menu: Menu<any, any, L2, any>,
-    ...args: MenuNavigationArgs<L2>
-  ) => Promise<void>;
-};
-export type WithActions<C extends MenuContext = MenuContext, L = any> = C & {
-  menu: MenuCallbackActions<L>;
-};
-export type WithState<C extends MenuContext = MenuContext, S = void> = C &
-  (S extends void ? {} : { menu: { state: State<NonNullable<S>> } });
-type LoaderFn<C extends MenuContext, S, L, D> = (
-  ctx: WithState<C, S>,
-  args: L,
-) => MaybePromise<
-  { text: string; parseMode?: ParseMode } & (D extends void
-    ? { data?: never }
-    : { data: D })
->;
-export type MenuCallbackContext<
-  C extends MenuContext = MenuContext,
-  S = void,
-  L = void,
-> = WithActions<C, L> & WithState<C, S>;
-type MenuCallbackFn<C extends MenuContext, S, L, D> = (
-  ctx: MenuCallbackContext<C, S, L>,
-  data: D,
-) => MaybePromise<void>;
-type MenuDynamicFn<C extends MenuContext, S, L, D> = (
-  ctx: WithState<C, S>,
-  builder: Omit<LayoutBuilder<C, S, L, D>, "prepare" | "build">,
-  data: D,
-) => MaybePromise<void>;
-type Action = "callback";
-type ActionHandler = {
-  action: string;
-  callbackFn?: MenuCallbackFn<any, any, any, any>;
-};
-type BuildStep<C extends MenuContext, S, L, D> =
-  | {
-      scope: "dynamic";
-      dynamicFn: MenuDynamicFn<C, S, L, D>;
-      buttons?: never;
-      handler?: never;
-    }
-  | {
-      scope: "static";
-      dynamicFn?: never;
-      buttons: InlineKeyboardButton[] | InlineKeyboardButton[][];
-      handler?: ActionHandler;
-    };
-export type MenuOptions = {
-  staleErrorText?: string;
-  timeoutErrorText?: string;
-  timeoutMs?: number;
-};
-export type KeyboardBuilder<
-  C extends MenuContext = MenuContext,
-  S = void,
-  L = void,
-  D = void,
-> = Pick<
-  LayoutBuilder<C, S, L, D>,
-  "callback" | "copy" | "url" | "row" | "dynamic"
->;
+import {
+  Action,
+  ActionHandler,
+  BuildStep,
+  InitStateFn,
+  KeyboardBuilder,
+  LoaderFn,
+  MaybePromise,
+  MenuCallbackActions,
+  MenuCallbackFn,
+  MenuContext,
+  MenuDynamicFn,
+  MenuNavigationArgs,
+  MenuOptions,
+  OnEnterFn,
+  State,
+  WithState,
+} from "./types.js";
 
 const MENU_PREFIX = "eijdfwof";
 const ACTION_REPRESENTATION_MAPPING = {
@@ -133,16 +59,41 @@ const parseAction = (
   };
 };
 
-export class LayoutBuilder<C extends MenuContext, S, L, D> {
+export class LayoutBuilder<
+  ContextType extends MenuContext,
+  StateType,
+  LoaderArgumentsType,
+  LoaderDataType,
+> implements
+    KeyboardBuilder<
+      ContextType,
+      StateType,
+      LoaderArgumentsType,
+      LoaderDataType
+    >
+{
   private readonly menuId: string;
-  private steps: BuildStep<C, S, L, D>[];
+  private steps: BuildStep<
+    ContextType,
+    StateType,
+    LoaderArgumentsType,
+    LoaderDataType
+  >[];
 
   constructor(menuId: string) {
     this.menuId = menuId;
     this.steps = [];
   }
 
-  callback(text: string, callbackFn?: MenuCallbackFn<C, S, L, D>) {
+  callback(
+    text: string,
+    callbackFn?: MenuCallbackFn<
+      ContextType,
+      StateType,
+      LoaderArgumentsType,
+      LoaderDataType
+    >,
+  ) {
     const targetId = nanoid(6);
     const action = buildAction("callback", this.menuId, targetId);
 
@@ -151,6 +102,8 @@ export class LayoutBuilder<C extends MenuContext, S, L, D> {
       buttons: [InlineKeyboard.text(text, action)],
       handler: { action, callbackFn },
     });
+
+    return this;
   }
 
   copy(text: string, content: string) {
@@ -158,6 +111,8 @@ export class LayoutBuilder<C extends MenuContext, S, L, D> {
       scope: "static",
       buttons: [InlineKeyboard.copyText(text, content)],
     });
+
+    return this;
   }
 
   url(text: string, url: string | URL) {
@@ -165,6 +120,8 @@ export class LayoutBuilder<C extends MenuContext, S, L, D> {
       scope: "static",
       buttons: [InlineKeyboard.url(text, url.toString())],
     });
+
+    return this;
   }
 
   row() {
@@ -172,10 +129,21 @@ export class LayoutBuilder<C extends MenuContext, S, L, D> {
       scope: "static",
       buttons: [[]],
     });
+
+    return this;
   }
 
-  dynamic(dynamicFn: MenuDynamicFn<C, S, L, D>) {
+  dynamic(
+    dynamicFn: MenuDynamicFn<
+      ContextType,
+      StateType,
+      LoaderArgumentsType,
+      LoaderDataType
+    >,
+  ) {
     this.steps.push({ scope: "dynamic", dynamicFn });
+
+    return this;
   }
 
   prepare() {
@@ -186,7 +154,7 @@ export class LayoutBuilder<C extends MenuContext, S, L, D> {
     };
   }
 
-  async build(ctx: WithState<C, S>, data: D) {
+  async build(ctx: WithState<ContextType, StateType>, data: LoaderDataType) {
     const keyboard: InlineKeyboardButton[][] = [[]];
     const staticHandlers: ActionHandler[] = [];
     const dynamicHandlers: ActionHandler[] = [];
@@ -207,7 +175,12 @@ export class LayoutBuilder<C extends MenuContext, S, L, D> {
         continue;
       }
 
-      const builder = new LayoutBuilder<C, S, L, D>(this.menuId);
+      const builder = new LayoutBuilder<
+        ContextType,
+        StateType,
+        LoaderArgumentsType,
+        LoaderDataType
+      >(this.menuId);
       await Promise.resolve(dynamicFn(ctx, builder, data));
       const dynamicBuild = await builder.build(ctx, data);
       dynamicHandlers.push(
@@ -235,17 +208,32 @@ export class LayoutBuilder<C extends MenuContext, S, L, D> {
   }
 }
 
-export class Menu<C extends MenuContext, S, L, D> {
+export class Menu<
+  ContextType extends MenuContext,
+  StateType,
+  LoaderArgumentsType,
+  LoaderDataType,
+> {
   readonly id: string;
-  private readonly loaderFn: LoaderFn<C, S, L, D>;
-  private readonly initStateFn?: InitStateFn<S>;
-  private readonly onEnterFn?: OnEnterFn<C, S>;
+  private readonly loaderFn: LoaderFn<
+    ContextType,
+    StateType,
+    LoaderArgumentsType,
+    LoaderDataType
+  >;
+  private readonly initStateFn?: InitStateFn<StateType>;
+  private readonly onEnterFn?: OnEnterFn<ContextType, StateType>;
   private readonly staticActionHandlersByAction: Map<string, ActionHandler>;
   private readonly dynamicActionHandlersByActionByChatId: Map<
     string,
     Map<string, ActionHandler>
   >;
-  private readonly builder: LayoutBuilder<C, S, L, D>;
+  private readonly builder: LayoutBuilder<
+    ContextType,
+    StateType,
+    LoaderArgumentsType,
+    LoaderDataType
+  >;
   private readonly options?: MenuOptions;
   private readonly defaultOptions = {
     staleErrorText: "The menu is stalled",
@@ -262,11 +250,21 @@ export class Menu<C extends MenuContext, S, L, D> {
     onEnter,
   }: {
     id: string;
-    loader: LoaderFn<C, S, L, D>;
-    builder: LayoutBuilder<C, S, L, D>;
-    state?: InitStateFn<S>;
+    loader: LoaderFn<
+      ContextType,
+      StateType,
+      LoaderArgumentsType,
+      LoaderDataType
+    >;
+    builder: LayoutBuilder<
+      ContextType,
+      StateType,
+      LoaderArgumentsType,
+      LoaderDataType
+    >;
+    state?: InitStateFn<StateType>;
     options?: MenuOptions;
-    onEnter?: OnEnterFn<C, S>;
+    onEnter?: OnEnterFn<ContextType, StateType>;
   }) {
     this.id = id;
     this.loaderFn = loader;
@@ -283,14 +281,14 @@ export class Menu<C extends MenuContext, S, L, D> {
     this.options = options;
   }
 
-  private initContext(ctx: C) {
+  private initContext(ctx: ContextType) {
     (ctx as any).menu ??= {};
     ctx.session._menu ??= {};
     ctx.session._menu[this.id] ??= {};
   }
 
-  private async getCallbackActions(ctx: C) {
-    const actions: MenuCallbackActions<L> = {
+  private async getCallbackActions(ctx: ContextType) {
+    const actions: MenuCallbackActions<LoaderArgumentsType> = {
       navigate: (
         menu: Menu<any, any, any, any>,
         ...args: MenuNavigationArgs<any>
@@ -308,7 +306,7 @@ export class Menu<C extends MenuContext, S, L, D> {
     return actions;
   }
 
-  private async getState(ctx: C) {
+  private async getState(ctx: ContextType) {
     if (!ctx.session._menu[this.id].state && !this.initStateFn) {
       return;
     }
@@ -336,16 +334,20 @@ export class Menu<C extends MenuContext, S, L, D> {
     return state;
   }
 
-  private async buildLayout(ctx: C, args: L) {
+  private async buildLayout(ctx: ContextType, args: LoaderArgumentsType) {
     this.initContext(ctx);
 
     const state = await this.getState(ctx);
     if (state) (ctx as any).menu.state = state;
 
-    await Promise.resolve(this.onEnterFn?.(ctx as WithState<C, S>));
+    await Promise.resolve(
+      this.onEnterFn?.(ctx as WithState<ContextType, StateType>),
+    );
 
     const { text, data, parseMode } = await Promise.race([
-      Promise.resolve(this.loaderFn(ctx as WithState<C, S>, args)),
+      Promise.resolve(
+        this.loaderFn(ctx as WithState<ContextType, StateType>, args),
+      ),
       new Promise<never>((_, reject) =>
         setTimeout(
           () =>
@@ -362,7 +364,7 @@ export class Menu<C extends MenuContext, S, L, D> {
 
     const { keyboard, dynamicHandlers } = await this.builder.build(
       ctx as any,
-      data as D,
+      data as LoaderDataType,
     );
 
     const dynamicActionHandlerMap = new Map();
@@ -374,14 +376,13 @@ export class Menu<C extends MenuContext, S, L, D> {
       dynamicActionHandlerMap,
     );
 
-    // _menu initialized at middleware
     ctx.session._menu.activeMenuLoaderArgs = args;
     ctx.session._menu.activeMenuLoaderData = data;
 
     return { text, keyboard, parseMode };
   }
 
-  middleware: MiddlewareFn<C> = async (ctx, next) => {
+  middleware: MiddlewareFn<ContextType> = async (ctx, next) => {
     const callbackQuery = ctx.callbackQuery?.data ?? "";
     const actionHandler =
       this.staticActionHandlersByAction.get(callbackQuery) ??
@@ -449,7 +450,7 @@ export class Menu<C extends MenuContext, S, L, D> {
     }
   };
 
-  async render(ctx: C, args: L) {
+  async render(ctx: ContextType, args: LoaderArgumentsType) {
     const { text, keyboard, parseMode } = await this.buildLayout(ctx, args);
     await ctx.editMessageText(text, {
       parse_mode: parseMode,
@@ -457,11 +458,14 @@ export class Menu<C extends MenuContext, S, L, D> {
     });
   }
 
-  async send(ctx: C, ...args: MenuNavigationArgs<L>) {
+  async send(
+    ctx: ContextType,
+    ...args: MenuNavigationArgs<LoaderArgumentsType>
+  ) {
     try {
       const { keyboard, text, parseMode } = await this.buildLayout(
         ctx,
-        args[0] as L,
+        args[0] as LoaderArgumentsType,
       );
       const { message_id } = await ctx.reply(text, {
         parse_mode: parseMode,
@@ -473,6 +477,7 @@ export class Menu<C extends MenuContext, S, L, D> {
     }
   }
 }
+
 export const createMenu = <
   ContextType extends MenuContext = MenuContext,
   StateType = void,
