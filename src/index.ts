@@ -18,8 +18,6 @@ import type {
   OnEnterFn,
   State,
   WithState,
-  WithActions,
-  MenuCallbackContext,
 } from "./types.js";
 
 const MENU_PREFIX = "eijdfwof";
@@ -409,17 +407,24 @@ export class Menu<
       return next();
     }
 
+    const answerQuery = async (
+      params?: Parameters<typeof ctx.answerCallbackQuery>[0],
+    ) => {
+      const request = ctx.answerCallbackQuery(params).catch(() => null);
+      if (!this.options?.experimentalDisableAnswerCallbackQueryAwait) {
+        await request;
+      }
+    };
+
     if (
       ctx.callbackQuery?.message?.message_id !==
       ctx.session._menu?.activeMessageId
     ) {
-      await ctx
-        .answerCallbackQuery({
-          show_alert: true,
-          text:
-            this.options?.staleErrorText ?? this.defaultOptions.staleErrorText,
-        })
-        .catch(() => null);
+      await answerQuery({
+        show_alert: true,
+        text:
+          this.options?.staleErrorText ?? this.defaultOptions.staleErrorText,
+      });
       return;
     }
 
@@ -450,14 +455,13 @@ export class Menu<
           ),
         ]);
       }
-      await ctx.answerCallbackQuery().catch(() => null);
+
+      await answerQuery();
     } catch (error: any) {
-      await ctx
-        .answerCallbackQuery({
-          text: error.message ?? "Unknown error",
-          show_alert: true,
-        })
-        .catch(() => null);
+      await answerQuery({
+        text: error.message ?? "Unknown error",
+        show_alert: true,
+      });
       throw error;
     }
   };

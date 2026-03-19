@@ -132,6 +132,7 @@ export type BuildStep<
     };
 
 export type MenuOptions = {
+  experimentalDisableAnswerCallbackQueryAwait?: boolean;
   staleErrorText?: string;
   timeoutErrorText?: string;
   timeoutMs?: number;
