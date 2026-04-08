@@ -462,7 +462,8 @@ export class Menu<
         text: error.message ?? "Unknown error",
         show_alert: true,
       });
-      throw error;
+      await Promise.resolve(this.options?.onError?.(error)).catch(() => null);
+      return;
     }
   };
 

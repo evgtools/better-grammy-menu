@@ -136,6 +136,7 @@ export type MenuOptions = {
   staleErrorText?: string;
   timeoutErrorText?: string;
   timeoutMs?: number;
+  onError?: (error: unknown) => MaybePromise<any>;
 };
 
 export interface KeyboardBuilder<
